@@ -1,0 +1,16 @@
+Query to get the query which returns count of mismatches between same columns in the wo tables:
+
+-----------------------------------------------------------------------------------------------
+
+SELECT LISTAGG('COUNT(CASE WHEN IFNULL(N.'||COLUMN_NAME||', \'\') <> IFNULL(S.'||COLUMN_NAME||', \'\') THEN 1 END) AS MIS_COUNT_'||COLUMN_NAME||', ','') FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='NYC_CLEAN';
+
+Dymanic Query which returns the list of queries and those queries returns the mismatch values of same columns between two tables:
+
+---------------------------------------------------------------------------------------------------------------------------------
+
+SELECT 'SELECT N.ACCOUNT_NUMBER,N.'||COLUMN_NAME||' AS SNFLK_'||COLUMN_NAME||',S.'||COLUMN_NAME||' AS SQL_'||COLUMN_NAME||' FROM NYC_CLEAN N 
+INNER JOIN 
+STGNYCCLEAN_BACKUP S
+ON N.ACCOUNT_NUMBER=S.ACCOUNT_NUMBER
+WHERE IFNULL(N.'||COLUMN_NAME||',\'\') <> IFNULL(S.'||COLUMN_NAME||',\'\');' FROM  INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME ='NYC_CLEAN';
+
