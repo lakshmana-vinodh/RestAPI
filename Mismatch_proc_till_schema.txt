@@ -1,0 +1,115 @@
+create or replace procedure MISMATCH_RESULT(
+)
+returns table(table1 varchar, table2 varchar,Result1 varchar, Result2 varchar)
+-- RETURNS VARCHAR
+language SQL
+EXECUTE AS CALLER
+AS
+declare
+T1_SCHEMA STRING:=UPPER(GETVARIABLE('T1_SCHEMA'));
+TABLE1_NAME string:=UPPER(GETVARIABLE('TABLE1_NAME'));
+T2_SCHEMA STRING:=UPPER(GETVARIABLE('T2_SCHEMA'));
+TABLE2_NAME string:=UPPER(GETVARIABLE('TABLE2_NAME'));
+KEY_COLUMNS_STRING STRING:=UPPER(GETVARIABLE('KEY_COLUMNS_STRING'));
+DEBUG BOOLEAN:=GETVARIABLE('DEBUG');
+COMPARE_COLUMN_STRING STRING:=UPPER(GETVARIABLE('COMPARE_COLUMN_STRING'));
+
+select_string varchar:='SELECT ';
+to_select varchar:= '';
+from_string varchar:= '';
+join_cond varchar:='';
+where_cond varchar:='';
+compare_query varchar:='';
+CommonColumns_list varchar:='';
+data resultset;
+
+BEGIN
+
+DEBUG:=IFNULL(DEBUG,FALSE);
+
+IF (DEBUG) THEN
+
+
+to_select:=''''||t1_schema||'.'||TABLE1_NAME||''','''||t2_schema||'.'||TABLE2_NAME||''',to_varchar(t1.'||COMPARE_COLUMN_STRING ||') as '||COMPARE_COLUMN_STRING||'_src,to_varchar(t2.'||COMPARE_COLUMN_STRING ||') as '||COMPARE_COLUMN_STRING||'_tgt';
+
+from_string := ' FROM '||T1_SCHEMA||'.'||TABLE1_NAME || ' t1 JOIN '||T2_SCHEMA||'.'|| TABLE2_NAME || ' t2 ON ';
+
+select listagg('t1.' || a.value || ' = t2.' || a.value,' and ') within group( order by a.index) into join_cond
+from table(SPLIT_TO_TABLE(:KEY_COLUMNS_STRING, ',')) a 
+group by a.seq;
+
+SELECT 'IFNULL(t1.'||COLUMN_NAME||'::'||DATA_TYPE||','||
+case when DATA_TYPE = 'TEXT' then '''''' 
+when DATA_TYPE ='BOOLEAN' then 'TRUE'
+when DATA_TYPE ='NUMBER' then '0'
+ELSE 'CURRENT_TIMESTAMP' end ||')<> IFNULL(t2.'||COLUMN_NAME ||'::'||DATA_TYPE||','||
+case when DATA_TYPE = 'TEXT' then '''''' 
+when DATA_TYPE ='BOOLEAN' then 'TRUE' 
+when DATA_TYPE ='NUMBER' then '0' 
+ELSE 'CURRENT_TIMESTAMP' end||')' into :where_cond
+FROM information_schema.columns where table_name = :TABLE1_NAME and Table_schema=:T1_SCHEMA and column_name in(SELECT column_name 
+FROM information_schema.columns where table_name = :TABLE2_NAME AND TABLE_SCHEMA=:T2_SCHEMA) AND COLUMN_NAME=:COMPARE_COLUMN_STRING;
+
+compare_query:=select_string || to_select||from_string||join_cond||' where '||where_cond||';';
+
+data:=(execute Immediate compare_query);
+
+return table(data);
+
+END IF;
+
+
+SELECT lISTAGG('COUNT(CASE WHEN IFNULL(t1.'||COLUMN_NAME||'::'||DATA_TYPE||','||
+case when DATA_TYPE = 'TEXT' then '''''' 
+when DATA_TYPE ='BOOLEAN' then 'TRUE'
+when DATA_TYPE ='NUMBER' then '0'
+ELSE 'CURRENT_TIMESTAMP' end ||')<> IFNULL(t2.'||COLUMN_NAME ||'::'||DATA_TYPE||','||
+case when DATA_TYPE = 'TEXT' then '''''' 
+when DATA_TYPE ='BOOLEAN' then 'TRUE' 
+when DATA_TYPE ='NUMBER' then '0' 
+ELSE 'CURRENT_TIMESTAMP'  end||') THEN 1 END ) AS MIS_'||column_name||',') INTO :to_select
+FROM information_schema.columns where table_name = :TABLE1_NAME and Table_schema=:T1_SCHEMA and column_name in(SELECT column_name 
+FROM information_schema.columns where table_name = :TABLE2_NAME AND TABLE_SCHEMA=:T2_SCHEMA);
+
+SELECT RTRIM(:to_select,',') into :to_select;
+
+from_string := ' FROM '||T1_SCHEMA||'.'||TABLE1_NAME || ' t1 JOIN '||T2_SCHEMA||'.'|| TABLE2_NAME || ' t2 ON ';
+
+select listagg('t1.' || a.value || '= t2.' || a.value,' and ') within group( order by a.index) into join_cond
+from table(SPLIT_TO_TABLE(:KEY_COLUMNS_STRING, ',')) a 
+group by a.seq;
+compare_query:=select_string ||' COUNT(*) AS COUNT_TOTAL,'|| to_select||from_string||join_cond||';';
+
+EXECUTE IMMEDIATE 'CREATE or replace TABLE cmp as '|| compare_query;
+
+
+select listagg(COLUMN_NAME,',') into :CommonColumns_list from information_schema.columns where table_name='CMP' ORDER BY ORDINAL_POSITION;
+
+
+compare_query:='SELECT '''||t1_schema||'.'||TABLE1_NAME||''','''||t2_schema||'.'||TABLE2_NAME||''',MISMATCH_COLUMNS,to_varchar(MISMATCH_COUNT) FROM CMP
+UNPIVOT( MISMATCH_COUNT for MISMATCH_COLUMNS IN('||:CommonColumns_list||')) order by MISMATCH_COLUMNS';
+
+
+data:=(execute Immediate compare_query);
+DROP TABLE CMP;
+return table(data);
+
+END;
+
+call mismatch_result();
+
+SET T1_SCHEMA = 'Public';
+SET TABLE1_NAME = 'stgnyccompleteclean_backup';
+SET T2_SCHEMA = 'public';
+SET TABLE2_NAME = 'stgnyccompleteclean_backup';
+SET KEY_COLUMNS_STRING = 'RESIDENTID';
+SET DEBUG = false;
+SET COMPARE_COLUMN_STRING = 'QAsMzip4';
+
+
+niteesh.dameragidda@oncoursehome.com
+Hyderabad007
+
+User: a-niteeshd@oncoursehome.com
+Password: M!nat0@123
+
